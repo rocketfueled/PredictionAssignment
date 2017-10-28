@@ -1,0 +1,118 @@
+---
+title: 'Peer-graded Assignment: Prediction Assignment Writeup'
+author: "Randall Tan"
+date: "29 October 2017"
+output: html_document
+---
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Dataset
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Loading Libraries and Datasets
+
+The dataset is partitioned into two sets to create a Training set which consists of 80% of the data, and a Test set which consists of the remaining 20% for validation of our models.
+
+```{r, message=FALSE, warning=FALSE}
+
+library(caret)
+library(randomForest)
+library(gbm)
+
+LOADTrainingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+LOADTestingURL  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TrainingFile<-"pml-traininig.csv"
+TestingFile<-"pml-testing.csv"
+
+# download the datasets
+if(!file.exists(TrainingFile))
+{
+    download.file(LOADTrainingURL,destfile = TrainingFile)
+}
+training <- read.csv(TrainingFile)
+if(!file.exists(TestingFile))
+{
+    download.file(LOADTestingURL,destfile = TestingFile)
+}
+testing  <- read.csv(TestingFile)
+
+# create a partition using caret with the training dataset on 80,20 ratio
+inTraining  <- createDataPartition(training$classe, p=0.8, list=FALSE)
+
+TrainingSet <- training[inTraining, ]
+
+TestingSet  <- training[-inTraining, ]
+
+```
+
+##Cleaning
+Variables that are missing or nearly zero in variance are cleaned out, while variables for identification purposes in columns 1 to 5 are removed.
+
+```{r, message=FALSE}
+ZeroVAR <- nearZeroVar(TrainingSet)
+TrainingSet <- TrainingSet[, -ZeroVAR]
+TestingSet  <- TestingSet[, -ZeroVAR]
+
+AllNA    <- sapply(TrainingSet, function(x) mean(is.na(x))) > 0.95
+TrainingSet <- TrainingSet[, AllNA==FALSE]
+TestingSet  <- TestingSet[, AllNA==FALSE]
+
+TrainingSet <- TrainingSet[, -(1:5)]
+TestingSet  <- TestingSet[, -(1:5)]
+
+```
+
+##Building Prediction Models and Comparison
+For comparison purposes, two prediction models (Random Forests & Generalised Boosted Model (GBM)) will be used to determine the adequate model to be used for our Testing dataset. Comparison of accuracy is made possible by use of a Confusion Matrix.
+
+##Random Forests Model
+```{r, message=FALSE}
+set.seed(301)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+RF <- train(classe ~ ., data=TrainingSet, method="rf",
+                          trControl=controlRF)
+RF$finalModel
+
+predictRF <- predict(RF, newdata=TestingSet)
+CMRF <- confusionMatrix(predictRF, TestingSet$classe)
+
+##Confusion Matrix
+CMRF
+
+```
+
+##Generalised Boosted Model (GBM)
+```{r, message=FALSE}
+set.seed(301)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GBM  <- train(classe ~ ., data=TrainingSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+
+predictGBM <- predict(GBM, newdata=TestingSet)
+CMGBM <- confusionMatrix(predictGBM, TestingSet$classe)
+
+##Confusion Matrix
+CMGBM
+```
+
+## Prediction
+As the Random Forest Model has a better accuracy score compared to GBM (0.9972 vs 0.987), the Testing dataset is put through the Random Forest Model.
+
+```{r, message=FALSE}
+predTESTING <- predict(RF, newdata=testing)
+predTESTING
+
+```
+
+
